@@ -77,6 +77,7 @@ public class ApiSparkServiceTestCase extends RestletTestCase {
 
     public static class AgentServerResource extends ServerResource {
         public static int CALL_COUNT = 0;
+
         public static Request LAST_REQUEST;
 
         @Get
@@ -170,7 +171,8 @@ public class ApiSparkServiceTestCase extends RestletTestCase {
 
     private static final String AGENT_URL = "http://localhost:" + AGENT_PORT;
 
-    private static final String USER_WEBAPI_URL = "http://localhost:" + USER_WEBAPI_PORT;
+    private static final String USER_WEBAPI_URL = "http://localhost:"
+            + USER_WEBAPI_PORT;
 
     public static final String BAD_PASSWORD = "dont remember my password";
 
@@ -198,7 +200,7 @@ public class ApiSparkServiceTestCase extends RestletTestCase {
     private Component agentComponent;
 
     private Component agentServiceComponent;
-    
+
     private Component userApiComponent;
 
     private Response callAgent(String path) throws Exception {
@@ -227,6 +229,7 @@ public class ApiSparkServiceTestCase extends RestletTestCase {
         ApiSparkService apiSparkService = new ApiSparkService();
         apiSparkService.setAgentEnabled(true);
         apiSparkService.setAgentServiceUrl(AGENT_SERVICE_URL);
+        apiSparkService.setAgentRefreshPeriodInMs(0);
         apiSparkService.setAgentLogin(VALID_USERNAME);
         apiSparkService.setAgentPassword(VALID_PASSWORD);
         apiSparkService.setAgentCellId(CELL_ID);
@@ -257,7 +260,8 @@ public class ApiSparkServiceTestCase extends RestletTestCase {
                 .add(new DefaultConverter());
     }
 
-    private void startApiSparkService(final ApiSparkService apiSparkService, boolean embedded) throws Exception {
+    private void startApiSparkService(final ApiSparkService apiSparkService,
+            boolean embedded) throws Exception {
         this.agentComponent = new Component();
         this.agentComponent.setName("agent");
         this.agentComponent.getServers().add(Protocol.HTTP, AGENT_PORT);
@@ -315,8 +319,7 @@ public class ApiSparkServiceTestCase extends RestletTestCase {
     public void startUserApi() throws Exception {
         this.userApiComponent = new Component();
         this.userApiComponent.setName("userapi");
-        this.userApiComponent.getServers().add(Protocol.HTTP,
-                USER_WEBAPI_PORT);
+        this.userApiComponent.getServers().add(Protocol.HTTP, USER_WEBAPI_PORT);
         this.userApiComponent.getDefaultHost().attach(new UserApiApplication());
         this.userApiComponent.start();
     }
@@ -334,6 +337,7 @@ public class ApiSparkServiceTestCase extends RestletTestCase {
         }
         this.agentServiceComponent = null;
     }
+
     public void stopUserApi() throws Exception {
         if (this.userApiComponent != null) {
             this.userApiComponent.stop();
@@ -463,9 +467,28 @@ public class ApiSparkServiceTestCase extends RestletTestCase {
         } catch (AgentConfigurationException e) {
             assertEquals(
                     "The authorization module requires the authentication module which is not enabled",
-                    e.getMessage()
-            );
+                    e.getMessage());
         }
+    }
+
+    public void testAgent_Timer() throws Exception {
+        // configure
+        ApiSparkService apiSparkService = getAgentService();
+        apiSparkService.setAgentRefreshPeriodInMs(TimeUnit.SECONDS.toMillis(2));
+        startApiSparkService(apiSparkService, true);
+
+        // verify
+        assertEquals(1, MockModulesSettingsServerResource.GET_SETTINGS_COUNT);
+
+        // Re-configure
+        MockModulesSettingsServerResource.MODULES_SETTINGS
+                .setAuthenticationModuleEnabled(false);
+
+        Thread.sleep(TimeUnit.SECONDS.toMillis(3));
+
+        // verify
+        assertEquals(2, MockModulesSettingsServerResource.GET_SETTINGS_COUNT);
+
     }
 
     public void testAgent_Configuration_Null() throws Exception {
@@ -475,10 +498,7 @@ public class ApiSparkServiceTestCase extends RestletTestCase {
             startApiSparkService(apiSparkService, true);
             fail("IllegalArgumentException expected");
         } catch (IllegalArgumentException e) {
-            assertEquals(
-                    "The cell identifier is mandatory",
-                    e.getMessage()
-            );
+            assertEquals("The cell identifier is mandatory", e.getMessage());
         }
     }
 
@@ -526,8 +546,6 @@ public class ApiSparkServiceTestCase extends RestletTestCase {
             throws Exception {
         // configure
         MockModulesSettingsServerResource.MODULES_SETTINGS
-                .setAuthenticationModuleEnabled(true);
-        MockModulesSettingsServerResource.MODULES_SETTINGS
                 .setFirewallModuleEnabled(true);
 
         FirewallRateLimit firewallRateLimit = new FirewallRateLimit();
@@ -546,11 +564,11 @@ public class ApiSparkServiceTestCase extends RestletTestCase {
         assertEquals(1, MockFirewallSettingsServerResource.GET_SETTINGS_COUNT);
 
         // call api
-        Response response = callAgent("/test", VALID_USERNAME, VALID_PASSWORD);
+        Response response = callAgent("/test", null, null);
         assertEquals(Status.SUCCESS_NO_CONTENT, response.getStatus());
 
         // second api call
-        response = callAgent("/test", VALID_USERNAME, VALID_PASSWORD);
+        response = callAgent("/test", null, null);
         assertEquals(Status.CLIENT_ERROR_TOO_MANY_REQUESTS,
                 response.getStatus());
     }
@@ -630,7 +648,7 @@ public class ApiSparkServiceTestCase extends RestletTestCase {
             startApiSparkService(apiSparkService, true);
             fail("IllegalArgumentException expected");
         } catch (IllegalArgumentException e) {
-            //expected
+            // expected
         }
     }
 
@@ -651,14 +669,17 @@ public class ApiSparkServiceTestCase extends RestletTestCase {
         assertEquals(Status.SUCCESS_NO_CONTENT, response.getStatus());
         assertEquals(1, AgentServerResource.CALL_COUNT);
         assertNotNull(AgentServerResource.LAST_REQUEST);
-        assertEquals(USER_WEBAPI_URL + "/test", AgentServerResource.LAST_REQUEST.getResourceRef().toString());
+        assertEquals(USER_WEBAPI_URL + "/test",
+                AgentServerResource.LAST_REQUEST.getResourceRef().toString());
 
         // call api
-        response = callAgent("/test?val1=a&val2=b", VALID_USERNAME, VALID_PASSWORD);
+        response = callAgent("/test?val1=a&val2=b", VALID_USERNAME,
+                VALID_PASSWORD);
         assertEquals(Status.SUCCESS_NO_CONTENT, response.getStatus());
         assertEquals(2, AgentServerResource.CALL_COUNT);
         assertNotNull(AgentServerResource.LAST_REQUEST);
-        assertEquals(USER_WEBAPI_URL + "/test?val1=a&val2=b", AgentServerResource.LAST_REQUEST.getResourceRef().toString());
+        assertEquals(USER_WEBAPI_URL + "/test?val1=a&val2=b",
+                AgentServerResource.LAST_REQUEST.getResourceRef().toString());
     }
 
     public void testReverseProxy() throws Exception {
@@ -678,14 +699,17 @@ public class ApiSparkServiceTestCase extends RestletTestCase {
         assertEquals(Status.SUCCESS_NO_CONTENT, response.getStatus());
         assertEquals(1, AgentServerResource.CALL_COUNT);
         assertNotNull(AgentServerResource.LAST_REQUEST);
-        assertEquals(USER_WEBAPI_URL + "/test", AgentServerResource.LAST_REQUEST.getResourceRef().toString());
+        assertEquals(USER_WEBAPI_URL + "/test",
+                AgentServerResource.LAST_REQUEST.getResourceRef().toString());
 
         // call api
-        response = callAgent("/test?val1=a&val2=b", VALID_USERNAME, VALID_PASSWORD);
+        response = callAgent("/test?val1=a&val2=b", VALID_USERNAME,
+                VALID_PASSWORD);
         assertEquals(Status.SUCCESS_NO_CONTENT, response.getStatus());
         assertEquals(2, AgentServerResource.CALL_COUNT);
         assertNotNull(AgentServerResource.LAST_REQUEST);
-        assertEquals(USER_WEBAPI_URL + "/test?val1=a&val2=b", AgentServerResource.LAST_REQUEST.getResourceRef().toString());
+        assertEquals(USER_WEBAPI_URL + "/test?val1=a&val2=b",
+                AgentServerResource.LAST_REQUEST.getResourceRef().toString());
     }
 
     public void testFirewall() throws Exception {
@@ -693,10 +717,8 @@ public class ApiSparkServiceTestCase extends RestletTestCase {
         // run
         ApiSparkService apiSparkService = new ApiSparkService();
         apiSparkService.setFirewallEnabled(true);
-        apiSparkService.getFirewallConfig().addRolesPeriodicCounter(
-                1, TimeUnit.MINUTES,
-                null, 1
-        );
+        apiSparkService.getFirewallConfig().addRolesPeriodicCounter(1,
+                TimeUnit.MINUTES, null, 1);
 
         // run
         startApiSparkService(apiSparkService, true);
@@ -715,9 +737,11 @@ public class ApiSparkServiceTestCase extends RestletTestCase {
                 response.getStatus());
     }
 
-
     public void testLoadConfiguration() throws Exception {
-        System.setProperty(ApiSparkService.CONFIGURATION_FILE_SYSTEM_PROPERTY_KEY, getClass().getResource("agent-configuration.properties").getPath());
+        System.setProperty(
+                ApiSparkService.CONFIGURATION_FILE_SYSTEM_PROPERTY_KEY,
+                getClass().getResource("agent-configuration.properties")
+                        .getPath());
         ApiSparkService apiSparkService = new ApiSparkService();
         apiSparkService.setAgentEnabled(true);
         apiSparkService.loadConfiguration();
@@ -725,8 +749,10 @@ public class ApiSparkServiceTestCase extends RestletTestCase {
         assertEquals(VALID_USERNAME, apiSparkService.getAgentLogin());
         assertEquals(VALID_PASSWORD, apiSparkService.getAgentPassword());
         assertEquals(Integer.valueOf(CELL_ID), apiSparkService.getAgentCellId());
-        assertEquals(Integer.valueOf(CELL_VERSION), apiSparkService.getAgentCellVersion());
+        assertEquals(Integer.valueOf(CELL_VERSION),
+                apiSparkService.getAgentCellVersion());
         assertTrue(apiSparkService.isReverseProxyEnabled());
-        assertEquals("http://myrealapi.com/", apiSparkService.getReverseProxyTargetUrl());
+        assertEquals("http://myrealapi.com/",
+                apiSparkService.getReverseProxyTargetUrl());
     }
 }

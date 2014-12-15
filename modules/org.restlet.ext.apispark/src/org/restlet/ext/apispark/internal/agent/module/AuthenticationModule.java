@@ -38,6 +38,7 @@ import org.restlet.Response;
 import org.restlet.data.ChallengeScheme;
 import org.restlet.data.Status;
 import org.restlet.ext.apispark.internal.ApiSparkConfig;
+import org.restlet.ext.apispark.internal.ApiSparkFilter;
 import org.restlet.ext.apispark.internal.agent.AgentException;
 import org.restlet.ext.apispark.internal.agent.AgentUtils;
 import org.restlet.ext.apispark.internal.agent.bean.AuthenticationSettings;
@@ -136,7 +137,6 @@ public class AuthenticationModule extends ChallengeAuthenticator {
 
             return result;
         }
-
     }
 
     /**
@@ -232,8 +232,8 @@ public class AuthenticationModule extends ChallengeAuthenticator {
      *            The modules settings.
      */
     public AuthenticationModule(ApiSparkConfig apiSparkConfig,
-            ModulesSettings modulesSettings) {
-        this(apiSparkConfig, modulesSettings, null);
+            ModulesSettings modulesSettings, ApiSparkFilter apiSparkFilter) {
+        this(apiSparkConfig, modulesSettings, null, apiSparkFilter);
     }
 
     /**
@@ -247,7 +247,8 @@ public class AuthenticationModule extends ChallengeAuthenticator {
      *            The context
      */
     public AuthenticationModule(ApiSparkConfig apiSparkConfig,
-            ModulesSettings modulesSettings, Context context) {
+            ModulesSettings modulesSettings, Context context,
+            ApiSparkFilter apiSparkFilter) {
         super(context, ChallengeScheme.HTTP_BASIC, "realm");
 
         authenticationSettings = new AuthenticationSettings();
@@ -277,7 +278,8 @@ public class AuthenticationModule extends ChallengeAuthenticator {
                 User user = authenticateClientResource
                         .authenticate(credentials);
                 if (user == null) {
-                    // Authentication should throw an error instead of returning
+                    // Authentication should throw an error instead of
+                    // returning
                     // null
                     throw new AgentException(
                             "Authentication should not return null");
