@@ -471,6 +471,11 @@ public class ApiSparkServiceTestCase extends RestletTestCase {
         }
     }
 
+    /**
+     * Tests that the timer calls the service for re-configuration
+     * 
+     * @throws Exception
+     */
     public void testAgent_Timer() throws Exception {
         // configure
         ApiSparkService apiSparkService = getAgentService();

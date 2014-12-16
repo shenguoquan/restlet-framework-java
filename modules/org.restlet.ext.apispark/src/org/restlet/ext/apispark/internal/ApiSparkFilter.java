@@ -109,7 +109,7 @@ public class ApiSparkFilter extends Filter {
     }
 
     /**
-     * Retrieve the modules settings from the service and updates the filter.
+     * Retrieves the modules settings from the service and updates the filter.
      * 
      * @param apiSparkConfig
      *            The agent configuration.
@@ -133,7 +133,7 @@ public class ApiSparkFilter extends Filter {
     }
 
     /**
-     * Retrieve the modules settings from the service and updates the filter.
+     * Updates the filter with its modules settings.
      * 
      * @param apiSparkConfig
      *            The agent configuration.
@@ -219,6 +219,12 @@ public class ApiSparkFilter extends Filter {
         }
     }
 
+    /**
+     * Terminates the agent if the service's configuration is not correctly set.
+     * 
+     * @param config
+     *            The service's configuration
+     */
     public void validateAgentConfiguration(ApiSparkConfig config) {
         if (config.getAgentCellId() == null) {
             throw new IllegalArgumentException(
@@ -241,6 +247,12 @@ public class ApiSparkFilter extends Filter {
         }
     }
 
+    /**
+     * Validates the redirection URL
+     * 
+     * @param config
+     *            The service's configuration
+     */
     public void validateRedirection(ApiSparkConfig config) {
         if (config.isReverserProxyEnabled()
                 && StringUtils.isNullOrEmpty(config.getReverseProxyTargetUrl())) {

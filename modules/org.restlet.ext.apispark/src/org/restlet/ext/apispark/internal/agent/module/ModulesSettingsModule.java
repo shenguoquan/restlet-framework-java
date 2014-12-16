@@ -39,6 +39,16 @@ public class ModulesSettingsModule {
 
     public static final String MODULE_PATH = "/settings";
 
+    /**
+     * Retrieves the modules settings from the service if it has changed, null
+     * otherwise.
+     * 
+     * @param apiSparkConfig
+     *            The service's configuration
+     * @param modulesSettings
+     *            The current modules settings
+     * @return The updated modules settings if it has changed, null otherwise.
+     */
     public static ModulesSettings getModulesSettings(
             ApiSparkConfig apiSparkConfig, ModulesSettings modulesSettings) {
 

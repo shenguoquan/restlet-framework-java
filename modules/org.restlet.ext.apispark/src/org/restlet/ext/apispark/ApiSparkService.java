@@ -68,8 +68,10 @@ public class ApiSparkService extends Service {
     /** The system property key for agent configuration file. */
     public static final String CONFIGURATION_FILE_SYSTEM_PROPERTY_KEY = "apiSparkServiceConfig";
 
+    /** The filter performing the services */
     private ApiSparkFilter apiSparkFilter;
 
+    /** The timer that triggers agent re-configuration */
     private Timer agentRefreshTimer;
 
     /**
@@ -529,6 +531,7 @@ public class ApiSparkService extends Service {
         this.reverseProxyTargetUrl = reverseProxyTargetUrl;
     }
 
+    /** Stops the service and its timer */
     @Override
     public synchronized void stop() throws Exception {
         super.stop();
