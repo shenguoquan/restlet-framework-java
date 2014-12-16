@@ -24,14 +24,6 @@
 
 package org.restlet.ext.apispark;
 
-import org.restlet.Context;
-import org.restlet.engine.util.StringUtils;
-import org.restlet.ext.apispark.internal.ApiSparkConfig;
-import org.restlet.ext.apispark.internal.ApiSparkFilter;
-import org.restlet.ext.apispark.internal.firewall.rule.FirewallRule;
-import org.restlet.routing.Filter;
-import org.restlet.service.Service;
-
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -40,18 +32,35 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.concurrent.TimeUnit;
+import java.util.logging.Logger;
+
+import org.restlet.Context;
+import org.restlet.engine.util.StringUtils;
+import org.restlet.ext.apispark.internal.ApiSparkConfig;
+import org.restlet.ext.apispark.internal.ApiSparkFilter;
+import org.restlet.ext.apispark.internal.agent.AgentConfigurationTimerTask;
+import org.restlet.ext.apispark.internal.firewall.rule.FirewallRule;
+import org.restlet.routing.Filter;
+import org.restlet.service.Service;
 
 /**
  * Configures a proxy for your own application and provides some services hosted
  * by the APISpark platform such as analytics, security.
- *
- * The service could be configured by a property file with the {@link #loadConfiguration()}
- * method.
+ * 
+ * The service could be configured by a property file with the
+ * {@link #loadConfiguration()} method.
  * 
  * @author Cyprien Quilici
  * @author Manuel Boillod
  */
 public class ApiSparkService extends Service {
+
+    /** Internal logger. */
+    protected static Logger LOGGER = Logger.getLogger(ApiSparkService.class
+            .getName());
 
     /** The URL of the remote service used by default. */
     public static final String DEFAULT_AGENT_SERVICE_URL = "https://apispark.restlet.com";
@@ -59,17 +68,25 @@ public class ApiSparkService extends Service {
     /** The system property key for agent configuration file. */
     public static final String CONFIGURATION_FILE_SYSTEM_PROPERTY_KEY = "apiSparkServiceConfig";
 
+    /** The filter performing the services */
+    private ApiSparkFilter apiSparkFilter;
+
+    /** The timer that triggers agent re-configuration */
+    private Timer agentRefreshTimer;
+
     /**
      * Indicates if the APISpark agent is enabled.
      */
     private boolean agentEnabled;
-
 
     /** The password used to connect to the APISpark platform. */
     private char[] agentPassword;
 
     /** The url of the APISpark service. */
     private String agentServiceUrl = DEFAULT_AGENT_SERVICE_URL;
+
+    /** Agent refresh period in milliseconds */
+    private long agentRefreshPeriodInMs = TimeUnit.MINUTES.toMillis(15);
 
     /** The login used to connect to the APISpark platform. */
     private String agentLogin;
@@ -86,15 +103,15 @@ public class ApiSparkService extends Service {
      */
     private Integer agentCellVersion;
 
-
     /**
-     * The list of associated {@link org.restlet.ext.apispark.internal.firewall.rule.FirewallRule}.
+     * The list of associated
+     * {@link org.restlet.ext.apispark.internal.firewall.rule.FirewallRule}.
      */
     private List<FirewallRule> firewallRules = new ArrayList<>();
 
     /**
-     * Indicates if the firewall is enabled.
-     * Add firewall rules with {@link #firewallConfig}.
+     * Indicates if the firewall is enabled. Add firewall rules with
+     * {@link #firewallConfig}.
      */
     private boolean firewallEnabled;
 
@@ -104,14 +121,13 @@ public class ApiSparkService extends Service {
     private FirewallConfig firewallConfig = new FirewallConfig(firewallRules);
 
     /**
-     * Indicates if the request redirection is enabled.
-     * If true, the {@link #reverseProxyTargetUrl} should be set.
+     * Indicates if the request redirection is enabled. If true, the
+     * {@link #reverseProxyTargetUrl} should be set.
      */
     private boolean reverseProxyEnabled;
 
     /**
-     * The redirection URL. Used if {@link #reverseProxyEnabled}
-     * is true.
+     * The redirection URL. Used if {@link #reverseProxyEnabled} is true.
      */
     private String reverseProxyTargetUrl;
 
@@ -140,8 +156,9 @@ public class ApiSparkService extends Service {
      * @param reverseProxyTargetUrl
      *            The redirection URL.
      */
-    public ApiSparkService(String agentLogin, char[] agentPassword, Integer agentCellId,
-                           Integer agentCellVersion, boolean reverseProxyEnabled, String reverseProxyTargetUrl) {
+    public ApiSparkService(String agentLogin, char[] agentPassword,
+            Integer agentCellId, Integer agentCellVersion,
+            boolean reverseProxyEnabled, String reverseProxyTargetUrl) {
         this(DEFAULT_AGENT_SERVICE_URL, agentLogin, agentPassword, agentCellId,
                 agentCellVersion, reverseProxyEnabled, reverseProxyTargetUrl);
     }
@@ -167,8 +184,9 @@ public class ApiSparkService extends Service {
      *            The redirection URL.
      */
     public ApiSparkService(String agentServiceUrl, String agentLogin,
-                           char[] agentPassword, Integer agentCellId, Integer agentCellVersion,
-                           boolean reverseProxyEnabled, String reverseProxyTargetUrl) {
+            char[] agentPassword, Integer agentCellId,
+            Integer agentCellVersion, boolean reverseProxyEnabled,
+            String reverseProxyTargetUrl) {
         super(true);
         this.agentPassword = agentPassword;
         this.agentServiceUrl = agentServiceUrl;
@@ -190,9 +208,20 @@ public class ApiSparkService extends Service {
         apiSparkConfig.setReverseProxyEnabled(reverseProxyEnabled);
         apiSparkConfig.setReverseProxyTargetUrl(reverseProxyTargetUrl);
 
-        return new ApiSparkFilter(context,
-            apiSparkConfig, agentEnabled, firewallEnabled, firewallRules, firewallConfig
-        );
+        apiSparkFilter = new ApiSparkFilter(context, apiSparkConfig,
+                agentEnabled, firewallEnabled, firewallRules);
+
+        if (agentEnabled && agentRefreshPeriodInMs > 0) {
+            TimerTask task = new AgentConfigurationTimerTask(apiSparkFilter);
+            agentRefreshTimer = new Timer(true);
+            agentRefreshTimer.scheduleAtFixedRate(task, agentRefreshPeriodInMs,
+                    agentRefreshPeriodInMs);
+            LOGGER.info("Setting agent refresh timer every "
+                    + TimeUnit.MILLISECONDS.toMinutes(agentRefreshPeriodInMs)
+                    + " minutes");
+        }
+
+        return apiSparkFilter;
     }
 
     /**
@@ -211,6 +240,15 @@ public class ApiSparkService extends Service {
      */
     public String getAgentServiceUrl() {
         return agentServiceUrl;
+    }
+
+    /**
+     * Returns the agent refresh period in milliseconds
+     * 
+     * @return The agent refresh period in milliseconds
+     */
+    public long getAgentRefreshPeriodInMs() {
+        return agentRefreshPeriodInMs;
     }
 
     /**
@@ -244,7 +282,6 @@ public class ApiSparkService extends Service {
         return agentCellVersion;
     }
 
-
     public FirewallConfig getFirewallConfig() {
         return firewallConfig;
     }
@@ -252,7 +289,7 @@ public class ApiSparkService extends Service {
     /**
      * Returns the redirection URL. Used if {@link #isReverseProxyEnabled()}
      * returns true.
-     *
+     * 
      * @return The redirection URL.
      */
     public String getReverseProxyTargetUrl() {
@@ -261,7 +298,7 @@ public class ApiSparkService extends Service {
 
     /**
      * Indicates if the APISpark agent is enabled.
-     *
+     * 
      * @return True if the APISpark agent is enabled.
      */
     public boolean isAgentEnabled() {
@@ -269,9 +306,9 @@ public class ApiSparkService extends Service {
     }
 
     /**
-     * Indicates if the firewall is enabled.
-     * Add firewall rules with {@link #firewallConfig}.
-     *
+     * Indicates if the firewall is enabled. Add firewall rules with
+     * {@link #firewallConfig}.
+     * 
      * @return True if the firewall is enabled.
      */
     public boolean isFirewallEnabled() {
@@ -279,10 +316,9 @@ public class ApiSparkService extends Service {
     }
 
     /**
-     * Indicates if the request redirection is enabled.
-     * If true, the redirection URL should be set with
-     * {@link #setReverseProxyTargetUrl(String)}.
-     *
+     * Indicates if the request redirection is enabled. If true, the redirection
+     * URL should be set with {@link #setReverseProxyTargetUrl(String)}.
+     * 
      * @return True if the request redirection is enabled.
      */
     public boolean isReverseProxyEnabled() {
@@ -290,16 +326,20 @@ public class ApiSparkService extends Service {
     }
 
     /**
-     * Load the agent configuration from the file set by the
-     * system property 'apiSparkServiceConfig'.
-     *
+     * Load the agent configuration from the file set by the system property
+     * 'apiSparkServiceConfig'.
+     * 
      * @see #CONFIGURATION_FILE_SYSTEM_PROPERTY_KEY
      */
     public void loadConfiguration() {
-        String configurationFile = System.getProperty(CONFIGURATION_FILE_SYSTEM_PROPERTY_KEY);
+        String configurationFile = System
+                .getProperty(CONFIGURATION_FILE_SYSTEM_PROPERTY_KEY);
         if (configurationFile == null) {
-            throw new IllegalArgumentException("Agent configuration file is not set. " +
-                    "Use system property '" + CONFIGURATION_FILE_SYSTEM_PROPERTY_KEY + "' to define it.");
+            throw new IllegalArgumentException(
+                    "Agent configuration file is not set. "
+                            + "Use system property '"
+                            + CONFIGURATION_FILE_SYSTEM_PROPERTY_KEY
+                            + "' to define it.");
         }
 
         loadConfiguration(new File(configurationFile));
@@ -307,52 +347,67 @@ public class ApiSparkService extends Service {
 
     /**
      * Load the agent configuration from the file.
-     *
+     * 
      * @param configurationFile
-     *          The configuration file.
+     *            The configuration file.
      */
     public void loadConfiguration(File configurationFile) {
         if (configurationFile == null) {
-            throw new IllegalArgumentException("APISpark configuration file is null.");
+            throw new IllegalArgumentException(
+                    "APISpark configuration file is null.");
         }
         if (!configurationFile.exists()) {
-            throw new IllegalArgumentException("APISpark configuration file does not exist: " + configurationFile.getAbsolutePath());
+            throw new IllegalArgumentException(
+                    "APISpark configuration file does not exist: "
+                            + configurationFile.getAbsolutePath());
         }
         try {
             loadConfiguration(new FileInputStream(configurationFile));
         } catch (FileNotFoundException e) {
-            throw new IllegalArgumentException("APISpark configuration file error. See exception for details.", e);
+            throw new IllegalArgumentException(
+                    "APISpark configuration file error. See exception for details.",
+                    e);
         }
     }
 
     /**
      * Load the agent configuration from the input stream.
-     *
+     * 
      * @param inputStream
-     *          The input stream of the configuration file.
+     *            The input stream of the configuration file.
      */
     public void loadConfiguration(InputStream inputStream) {
         Properties properties = new Properties();
         try {
             properties.load(inputStream);
         } catch (IOException e) {
-            throw new IllegalArgumentException("APISpark configuration file error. See exception for details.", e);
+            throw new IllegalArgumentException(
+                    "APISpark configuration file error. See exception for details.",
+                    e);
         }
-        this.agentServiceUrl = properties.getProperty("agent.serviceUrl", DEFAULT_AGENT_SERVICE_URL);
+        this.agentServiceUrl = properties.getProperty("agent.serviceUrl",
+                DEFAULT_AGENT_SERVICE_URL);
         this.agentLogin = properties.getProperty("agent.login");
-        this.agentPassword = getRequiredProperty(properties, "agent.password").toCharArray();
-        this.agentCellId = getRequiredIntegerProperty(properties, "agent.cellId");
-        this.agentCellVersion = getRequiredIntegerProperty(properties, "agent.cellVersion");
-        this.reverseProxyEnabled = Boolean.valueOf(getRequiredProperty(properties, "reverseProxy.enabled"));
+        this.agentPassword = getRequiredProperty(properties, "agent.password")
+                .toCharArray();
+        this.agentCellId = getRequiredIntegerProperty(properties,
+                "agent.cellId");
+        this.agentCellVersion = getRequiredIntegerProperty(properties,
+                "agent.cellVersion");
+        this.reverseProxyEnabled = Boolean.valueOf(getRequiredProperty(
+                properties, "reverseProxy.enabled"));
         if (this.reverseProxyEnabled) {
-            this.reverseProxyTargetUrl = getRequiredProperty(properties, "reverseProxy.targetUrl");
+            this.reverseProxyTargetUrl = getRequiredProperty(properties,
+                    "reverseProxy.targetUrl");
         }
     }
 
     private String getRequiredProperty(Properties properties, String key) {
         String value = properties.getProperty(key);
         if (StringUtils.isNullOrEmpty(value)) {
-            throw new IllegalArgumentException("APISpark configuration file error. The property '" + key + "' is required");
+            throw new IllegalArgumentException(
+                    "APISpark configuration file error. The property '" + key
+                            + "' is required");
         }
         return value;
     }
@@ -362,7 +417,9 @@ public class ApiSparkService extends Service {
         try {
             return Integer.valueOf(value);
         } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("APISpark configuration file error. The property '" + key + "' should be a number", e);
+            throw new IllegalArgumentException(
+                    "APISpark configuration file error. The property '" + key
+                            + "' should be a number", e);
         }
     }
 
@@ -373,8 +430,8 @@ public class ApiSparkService extends Service {
      *            The password used to connect to the APISpark platform.
      */
     public void setAgentPassword(String agentPassword) {
-        this.agentPassword = agentPassword != null ? agentPassword.toCharArray()
-                : null;
+        this.agentPassword = agentPassword != null ? agentPassword
+                .toCharArray() : null;
     }
 
     /**
@@ -385,6 +442,17 @@ public class ApiSparkService extends Service {
      */
     public void setAgentServiceUrl(String agentServiceUrl) {
         this.agentServiceUrl = agentServiceUrl;
+    }
+
+    /**
+     * Sets the agent refresh period
+     * 
+     * @param agentRefreshPeriodInMs
+     *            The agent refresh period in milliseconds
+     * 
+     */
+    public void setAgentRefreshPeriodInMs(long agentRefreshPeriodInMs) {
+        this.agentRefreshPeriodInMs = agentRefreshPeriodInMs;
     }
 
     /**
@@ -414,8 +482,8 @@ public class ApiSparkService extends Service {
      * platform for your application.
      * 
      * @param agentCellVersion
-     *            The version of the cell configured on the APISpark
-     *            platform for your application.
+     *            The version of the cell configured on the APISpark platform
+     *            for your application.
      */
     public void setAgentCellVersion(Integer agentCellVersion) {
         this.agentCellVersion = agentCellVersion;
@@ -423,9 +491,9 @@ public class ApiSparkService extends Service {
 
     /**
      * Indicates if the APISpark agent is enabled.
-     *
+     * 
      * @param agentEnabled
-     *      True if the APISpark agent is enabled.
+     *            True if the APISpark agent is enabled.
      */
     public void setAgentEnabled(boolean agentEnabled) {
         this.agentEnabled = agentEnabled;
@@ -433,34 +501,42 @@ public class ApiSparkService extends Service {
 
     /**
      * Indicates if the firewall is enabled.
-     *
+     * 
      * @param firewallEnabled
-     *      True if the firewall is enabled.
+     *            True if the firewall is enabled.
      */
     public void setFirewallEnabled(boolean firewallEnabled) {
         this.firewallEnabled = firewallEnabled;
     }
 
     /**
-     * Indicates if the reverse proxy is enabled.
-     * If true, the target URL should be set with
-     * {@link #setReverseProxyTargetUrl(String)}.
-     *
+     * Indicates if the reverse proxy is enabled. If true, the target URL should
+     * be set with {@link #setReverseProxyTargetUrl(String)}.
+     * 
      * @param reverseProxyEnabled
-     *          True if the reverse proxy is enabled.
+     *            True if the reverse proxy is enabled.
      */
     public void setReverseProxyEnabled(boolean reverseProxyEnabled) {
         this.reverseProxyEnabled = reverseProxyEnabled;
     }
 
     /**
-     * Set the target URL of the reverse proxy. Used if {@link #isReverseProxyEnabled()}
-     * is true.
-     *
+     * Set the target URL of the reverse proxy. Used if
+     * {@link #isReverseProxyEnabled()} is true.
+     * 
      * @param reverseProxyTargetUrl
-     *          The target URL.
+     *            The target URL.
      */
     public void setReverseProxyTargetUrl(String reverseProxyTargetUrl) {
         this.reverseProxyTargetUrl = reverseProxyTargetUrl;
+    }
+
+    /** Stops the service and its timer */
+    @Override
+    public synchronized void stop() throws Exception {
+        super.stop();
+        if (agentRefreshTimer != null) {
+            agentRefreshTimer.cancel();
+        }
     }
 }

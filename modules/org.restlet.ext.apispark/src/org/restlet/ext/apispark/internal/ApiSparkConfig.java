@@ -24,8 +24,6 @@
 
 package org.restlet.ext.apispark.internal;
 
-import org.restlet.ext.apispark.ApiSparkService;
-
 /**
  * TODO I'm not convinced by the presence of such configuration bean. The
  * service really hosts the configuration.
@@ -36,7 +34,7 @@ public class ApiSparkConfig {
 
     private char[] agentPassword;
 
-    private String agentServiceUrl = ApiSparkService.DEFAULT_AGENT_SERVICE_URL;
+    private String agentServiceUrl;
 
     private String agentLogin;
 
