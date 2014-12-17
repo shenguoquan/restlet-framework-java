@@ -239,7 +239,6 @@ public class JacksonRepresentation<T> extends OutputRepresentation {
             result = new ObjectMapper(jsonFactory);
         }
 
-        result.setSerializationInclusion(Include.ALWAYS);
         return result;
     }
 
