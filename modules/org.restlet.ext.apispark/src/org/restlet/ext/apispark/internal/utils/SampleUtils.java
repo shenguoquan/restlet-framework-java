@@ -85,13 +85,13 @@ public class SampleUtils {
         return content;
     }
 
-    private static Object getFieldSampleValue(Property property) {
+    public static Object getFieldSampleValue(Property property) {
         Object sampleValue = property.getExample() != null ? convertSampleValue(
                 property.getType(), property.getExample())
                 : getPropertyDefaultSampleValue(property.getType(),
                         property.getName());
 
-        if (property.getMaxOccurs() != 1) {
+        if (property.getMaxOccurs() != null && property.getMaxOccurs() != 1) {
             if (sampleValue != null) {
                 sampleValue = Arrays.asList(sampleValue);
             } else {
